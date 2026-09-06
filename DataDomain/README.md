@@ -53,17 +53,17 @@ koriste. Priručnik je upotrebljiv na obe grane.
 
 | # | Poglavlje | Šta pokriva |
 |---|---|---|
-| 01 | [Osnove i pristup](01-osnove-i-pristup.md) | SSH/serijski pristup, CLI navigacija, alijasi, help sistem, role i korisnici, `net filter` |
-| 02 | [Dnevni health check](02-dnevni-health-check.md) | Cheat sheet: komande za "da li je sve u redu", redosled provere, značenje outputa |
-| 03 | [Sistem, alerti, logovi, podrška](03-sistem-alerti-logovi.md) | `alerts`, `autosupport`, `support bundle`, `log`, hardver, `elicense`, upgrade, reboot |
-| 04 | [Kapacitet, file system i cleaning](04-kapacitet-filesystem-cleaning.md) | `filesys show space`, kompresija, GC/cleaning, pragovi zauzeća, `storage`, `disk`, Cloud Tier |
-| 05 | [MTree, kvote i snapshot](05-mtree-kvote-snapshot.md) | MTree upravljanje, per-MTree statistika, capacity i stream kvote, snapshot i rasporedi |
-| 06 | [Retention Lock](06-retention-lock.md) | Governance vs Compliance, rola `security`, min/max retention, automatic lock, indefinite hold, izveštaji |
-| 07 | [Replikacija](07-replikacija.md) | MTree/Collection/Managed File replikacija, kontekst, inicijalizacija, monitoring, throttle, break, resync |
-| 08 | [Mreža i performanse](08-mreza-i-performanse.md) | Interfejsi, agregacija/failover, `net route`, `net filter`, opterećenje, `net iperf`, dijagnostika |
-| 09 | [Protokoli i pristup podacima](09-protokoli-nfs-cifs-ddboost.md) | `nfs export`, CIFS/SMB, DD Boost storage unit-ovi, ifgroup, VTL |
-| 10 | [Troubleshooting playbook-ovi](10-troubleshooting-playbooks.md) | 16 scenarija: FS pun, cleaning, replikacija, protokoli, disk, CR incidenti |
-| 12 | [Cyber Recovery vault](12-cyber-recovery-vault.md) | CR 20.3: stanja vault-a, politike, CRCLI, kapacitet vault-a, oporavak, šta se NE dira na vault DD-u |
+| 01 | [Osnove i pristup](01%20—%20Osnove%20i%20pristup.md) | SSH/serijski pristup, CLI navigacija, alijasi, help sistem, role i korisnici, `net filter` |
+| 02 | [Dnevni health check](02%20—%20Dnevni%20health%20check.md) | Cheat sheet: komande za "da li je sve u redu", redosled provere, značenje outputa |
+| 03 | [Sistem, alerti, logovi, podrška](03%20—%20Sistem,%20alerti,%20logovi%20i%20podrška.md) | `alerts`, `autosupport`, `support bundle`, `log`, hardver, `elicense`, upgrade, reboot |
+| 04 | [Kapacitet, file system i cleaning](04%20—%20Kapacitet,%20file%20system%20i%20cleaning.md) | `filesys show space`, kompresija, GC/cleaning, pragovi zauzeća, `storage`, `disk`, Cloud Tier |
+| 05 | [MTree, kvote i snapshot](05%20—%20MTree,%20kvote%20i%20snapshot.md) | MTree upravljanje, per-MTree statistika, capacity i stream kvote, snapshot i rasporedi |
+| 06 | [Retention Lock](06%20—%20DD%20Retention%20Lock%20(zaključavanje%20backup%20fajlova).md) | Governance vs Compliance, rola `security`, min/max retention, automatic lock, indefinite hold, izveštaji |
+| 07 | [Replikacija](07%20—%20Replikacija.md) | MTree/Collection/Managed File replikacija, kontekst, inicijalizacija, monitoring, throttle, break, resync |
+| 08 | [Mreža i performanse](08%20—%20Mreža%20i%20performanse.md) | Interfejsi, agregacija/failover, `net route`, `net filter`, opterećenje, `net iperf`, dijagnostika |
+| 09 | [Protokoli i pristup podacima](09%20—%20Protokoli%20i%20pristup%20podacima.md) | `nfs export`, CIFS/SMB, DD Boost storage unit-ovi, ifgroup, VTL |
+| 10 | [Troubleshooting playbook-ovi](10%20—%20Troubleshooting%20playbook-ovi.md) | 16 scenarija: FS pun, cleaning, replikacija, protokoli, disk, CR incidenti |
+| 11 | [Cyber Recovery vault](11%20—%20PowerProtect%20Cyber%20Recovery%20(CR%20vault).md) | CR 20.3: stanja vault-a, politike, CRCLI, kapacitet vault-a, oporavak, šta se NE dira na vault DD-u |
 
 ---
 
