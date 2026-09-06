@@ -1,4 +1,4 @@
-# Napredne Linux komande — 01: `ss` (socket statistics)
+# Napredne Linux komande: `ss` (socket statistics)
 
 ## 1. Uvod
 
