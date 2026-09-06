@@ -1,21 +1,21 @@
 # 06 — DD Retention Lock (zaključavanje backup fajlova)
 
-Retention Lock (RL) sprečava brisanje i izmenu fajlova na MTree-ju dok ne istekne
-zadati rok. Radi se na nivou pojedinačnog fajla, a uključuje se na nivou MTree-ja.
+Retention Lock (RL) sprečava brisanje i izmenu fajlova na MTree-ju dok ne
+istekne zadati rok. Radi se na nivou pojedinačnog fajla, a uključuje se na
+nivou MTree-ja.
 
 ---
 
-## 6.1 Dva režima — razlika koju morate znati
+## 6.1 Dva režima
 
 | | **Governance** | **Compliance** |
 |---|---|---|
-| Namena | Interna politika, zaštita od greške i od običnog ransomware brisanja | Regulatorni zahtev (SEC 17a-4, GDPR retencija, revizija) |
-| Ko može da ga isključi | `admin` / `limited-admin` | Niko — ni Dell support. Traži `security-officer` odobrenje i nema revert-a nad zaključanim fajlovima |
+| Namena | Interna politika, zaštita od greške i od ransomware brisanja | Regulatorni zahtev (SEC 17a-4, revizija) |
+| Ko može da ga isključi | `admin` / `limited-admin` | Niko — ni Dell support |
 | Može li se lock skratiti | Da, `mtree retention-lock revert` | **Ne** |
-| Traži security officer nalog | Ne | **Da**, obavezno |
-| Traži poseban system-level enable | Ne | Da |
-| Tipičan max rok | do ~5 godina (default) | do ~70 godina |
-| Licenca | Zasebna RL Governance licenca | Zasebna RL Compliance licenca |
+| Traži nalog sa rolom `security` | Ne (osim ako je uključen `security-auth`) | **Da**, obavezno |
+| Traži system-level enable | Ne | Da |
+| Licenca | RL Governance | RL Compliance |
 
 > **Praktično pravilo:** ako niste sigurni koji vam treba — treba vam Governance.
 > Compliance je jednosmerna vrata; pogrešno postavljen rok od 10 godina na
@@ -26,40 +26,38 @@ zadati rok. Radi se na nivou pojedinačnog fajla, a uključuje se na nivou MTree
 ## 6.2 Provera trenutnog stanja (read-only)
 
 ```
-license show                                          # da li RL licenca uopšte postoji
-elicense show
-mtree list                                            # kolona sa RL statusom po MTree-ju
-mtree retention-lock status mtree /data/col1/<mtree>  # detaljan status jednog MTree-ja
+elicense show                                         # da li RL licenca postoji
+mtree list                                            # RL status po MTree-ju
+mtree retention-lock status mtree /data/col1/<mtree>
+mtree retention-lock show {min-retention-period | max-retention-period | automatic-retention-period | automatic-lock-delay} mtree /data/col1/<mtree>
 ```
 
-Za Compliance režim na nivou sistema:
+Na nivou sistema:
 
 ```
 system retention-lock compliance status
-authorization show
-user show list                                        # da li postoji security-officer nalog
+system retention-lock governance security-auth status
+authorization policy show
+authorization show history last 7 days
+user show list                                        # postoji li nalog sa rolom `security`
 ```
 
-`mtree retention-lock status` vraća:
-- da li je RL `enabled` ili `disabled`
-- režim (`governance` / `compliance`)
-- `min-retention-period` i `max-retention-period`
-- da li je konfigurisan automatic retention lock
+> Komanda je `elicense show`, **ne** `license show`.
 
 ---
 
 ## 6.3 Uključivanje Governance režima
 
-⚠️ Menja konfiguraciju MTree-ja.
+⚠️
 
 ```
-# 1. Licenca (ako već nije dodata)
-elicense update                       # interaktivno, unosi se licencni fajl
+# 1. Licenca (ako nije dodata)
+elicense update [<license-file>]
 
 # 2. Uključivanje na MTree-ju
 mtree retention-lock enable mode governance mtree /data/col1/<mtree>
 
-# 3. Postavljanje granica roka
+# 3. Granice roka
 mtree retention-lock set min-retention-period 24hours mtree /data/col1/<mtree>
 mtree retention-lock set max-retention-period 1825days mtree /data/col1/<mtree>
 
@@ -67,30 +65,51 @@ mtree retention-lock set max-retention-period 1825days mtree /data/col1/<mtree>
 mtree retention-lock status mtree /data/col1/<mtree>
 ```
 
-Jedinice za period: `minutes`, `hours`, `days`, `months`, `years`
-(npr. `12hours`, `90days`, `7years`).
+Jedinice: `minutes`, `hours`, `days`, `months`, `years` (npr. `12hours`, `90days`, `7years`).
 
-**Bitna ograničenja:**
-- RL se **ne može** uključiti na `/backup` MTree-ju.
-- `min-retention-period` ne može biti kraći od 12 sati.
-- Rok se ne može skratiti nakon što je fajl zaključan — samo produžiti.
+**Ograničenja:**
+- RL se **ne može** uključiti na `/backup` MTree-ju
+- `min-retention-period` ne može biti kraći od 12 sati
+- Rok se ne može skratiti nakon zaključavanja — samo produžiti
+
+Reset postavki:
+
+```
+mtree retention-lock reset {min-retention-period | max-retention-period | automatic-retention-period | automatic-lock-delay} mtree /data/col1/<mtree>   # ⚠️
+```
+
+### Zaštita revert operacije u Governance režimu
+
+Podrazumevano `revert` traži samo `sysadmin` lozinku. Može se pooštriti:
+
+```
+system retention-lock governance security-auth status
+system retention-lock governance security-auth enable      # ⚠️
+system retention-lock governance security-auth disable      # ⚠️
+```
+
+Kada je uključeno, `mtree retention-lock revert` traži i autorizaciju
+security officera pored `sysadmin` lozinke. **Preporučeno na svakom
+produkcijskom sistemu sa Governance režimom** — inače je jedan kompromitovan
+admin nalog dovoljan da otključa sve.
 
 ---
 
 ## 6.4 Uključivanje Compliance režima
 
-🛑 Nepovratno. Radi se samo uz formalno odobrenje i uz definisanog security officera.
+🛑 Nepovratno. Samo uz formalno odobrenje i definisanog security officera.
 
 ```
-# 1. Kreiranje security officer naloga (radi se kao admin)
-user add <so-username> role security-officer
+# 1. Nalog sa rolom `security` (radi se kao admin, samo prvi put)
+user add <so-username> role security
 
-# 2. Uključivanje security officer autorizacije
+# 2. Uključivanje autorizacije
 authorization policy set security-officer enabled
 
-# 3. Uključivanje Compliance na nivou sistema
-#    Traži potvrdu security officera i restart file systema
+# 3. Konfiguracija i uključivanje Compliance na nivou sistema
+system retention-lock compliance configure
 system retention-lock compliance enable
+system retention-lock compliance status
 
 # 4. Uključivanje na MTree-ju
 mtree retention-lock enable mode compliance mtree /data/col1/<mtree>
@@ -100,17 +119,25 @@ mtree retention-lock set min-retention-period 24hours mtree /data/col1/<mtree>
 mtree retention-lock set max-retention-period 3650days mtree /data/col1/<mtree>
 ```
 
-Od trenutka kada je Compliance uključen na sistemu, veliki broj administrativnih
-operacija (brisanje MTree-ja, isključivanje file systema, izmena sistemskog vremena,
-neki upgrade koraci) traži dodatnu potvrdu security officera. To je namerno.
+> **Rola se zove `security`, ne `security-officer`.** `authorization policy set
+> security-officer` je ispravan naziv politike, ali `user add ... role security`
+> je ispravan naziv role. Ovo je najčešća greška pri postavljanju.
+>
+> Prvi `security` nalog kreira `admin`. Nakon toga **samo `security` korisnici**
+> mogu dodavati ili brisati druge `security` naloge. Rola `security` se ne može
+> dodeliti postojećem nalogu preko `user change role`.
+
+Od trenutka kada je Compliance uključen, mnoge administrativne operacije
+(brisanje MTree-ja, `filesys disable`, izmena sistemskog vremena, ručni cleaning,
+neki upgrade koraci) traže dodatnu potvrdu security officera. To je namerno.
 
 ---
 
-## 6.5 Kako se fajl zapravo zaključava
+## 6.5 Kako se fajl zaključava
 
-Retention Lock se **ne postavlja komandom na DD-u za pojedinačni fajl.** Klijent
-(backup aplikacija ili skripta) zaključava fajl tako što mu postavi `atime`
-u budućnost. DD tumači budući `atime` kao "zaključaj do tog datuma".
+Retention Lock se **ne postavlja komandom na DD-u za pojedinačni fajl.**
+Klijent zaključava fajl tako što mu postavi `atime` u budućnost. DD tumači
+budući `atime` kao "zaključaj do tog datuma".
 
 Sa Linux klijenta preko NFS mount-a:
 
@@ -128,111 +155,142 @@ Nakon zaključavanja:
 - rok se **ne može skratiti** (osim `revert`-om u Governance režimu)
 
 Većina backup aplikacija (NetWorker, Avamar, Veeam, PowerProtect Data Manager,
-NetBackup) ovo radi automatski ako je RL integracija uključena u samoj aplikaciji.
+NetBackup) ovo radi automatski ako je RL integracija uključena u aplikaciji.
 
 ---
 
 ## 6.6 Automatic Retention Lock
 
-Za MTree-jeve gde klijent ne postavlja `atime` sam — tipično obični NFS/CIFS share,
-ili odredište replikacije u Cyber Recovery scenariju — koristi se automatski lock.
-DD sam zaključava svaki novi fajl nakon isteka "delay" perioda.
+Za MTree-jeve gde klijent ne postavlja `atime` sam — obični NFS/CIFS share,
+ili odredište replikacije u Cyber Recovery scenariju.
 
 ⚠️
 
 ```
 mtree retention-lock set automatic-retention-period 30days mtree /data/col1/<mtree>
 mtree retention-lock set automatic-lock-delay 120minutes mtree /data/col1/<mtree>
+mtree retention-lock show automatic-retention-period mtree /data/col1/<mtree>
 mtree retention-lock status mtree /data/col1/<mtree>
 ```
 
 - `automatic-lock-delay` — koliko dugo fajl ostaje izmenjiv nakon poslednjeg
-  upisa pre nego što se zaključa. Mora biti duže od trajanja najdužeg backup posla,
-  inače će se fajl zaključati dok se još upisuje.
-- `automatic-retention-period` — na koliko dugo se zaključava.
+  upisa pre zaključavanja. **Mora biti duže od najdužeg backup posla.**
+- `automatic-retention-period` — na koliko dugo se zaključava
 
 > **Najčešća greška:** prekratak `automatic-lock-delay`. Ako backup traje 4 sata,
 > a delay je 120 minuta, fajl se zaključa usred posla i backup pada.
 
 ---
 
-## 6.7 Otključavanje i revert (samo Governance)
+## 6.7 Indefinite Retention Hold (legal hold)
 
-⚠️ Radi se samo uz odobrenje. Loguje se i vidi u auditu.
+Zadržava fajlove neograničeno, bez obzira na rok retencije. Koristi se za
+sudske postupke i revizije.
+
+⚠️
 
 ```
-# Vrati zaključavanje pojedinačnog fajla
-mtree retention-lock revert /data/col1/<mtree>/<putanja-do-fajla>
+mtree retention-lock indefinite-retention-hold enable mtree /data/col1/<mtree>
+mtree retention-lock indefinite-retention-hold disable mtree /data/col1/<mtree>
+mtree retention-lock status mtree /data/col1/<mtree>
+```
 
-# Isključi RL na celom MTree-ju (samo Governance)
+> Dok je hold aktivan, fajlovi se **ne mogu obrisati ni po isteku retencije**.
+> Prostor ostaje zauzet dok se hold ne skine. Ovo treba biti dokumentovano —
+> hold koji je neko uključio pre dve godine i zaboravio je čest uzrok
+> neobjašnjivog zauzeća.
+
+---
+
+## 6.8 Izveštaj o zaključanim fajlovima
+
+```
+mtree retention-lock report generate retention-details mtrees {<lista> | all} [type {arl | ...}]
+```
+
+Daje pregled šta je zaključano, do kada i po kom režimu. Koristi se za:
+- reviziju i dokazivanje usaglašenosti
+- planiranje kapaciteta (koliko prostora je zaključano i do kada)
+- istragu kada se prostor ne oslobađa
+
+---
+
+## 6.9 Otključavanje i revert (samo Governance)
+
+⚠️ Loguje se i vidi u `authorization show history`.
+
+```
+mtree retention-lock revert <putanja-do-fajla>
 mtree retention-lock disable mtree /data/col1/<mtree>
 ```
 
 `mtree retention-lock disable` **ne otključava postojeće zaključane fajlove** —
-samo sprečava zaključavanje novih. Postojeći fajlovi ostaju zaključani do isteka
-roka ili dok se pojedinačno ne urade `revert`.
+samo sprečava zaključavanje novih. Postojeći ostaju zaključani do isteka roka
+ili dok se pojedinačno ne urade `revert`.
+
+Ako je uključen `system retention-lock governance security-auth`, `revert`
+traži i autorizaciju security officera.
 
 U **Compliance** režimu `revert` ne postoji. MTree se ne može obrisati dok
 u njemu ima zaključanih fajlova.
 
 ---
 
-## 6.8 Retention Lock i replikacija
+## 6.10 Retention Lock i replikacija
 
-Ovo je deo koji se najčešće pogrešno postavi.
-
-- MTree replikacija **prenosi lock status fajlova** na odredište.
-- Odredišni uređaj mora imati **istu ili kompatibilnu RL licencu i režim**.
-  Compliance MTree se ne može replicirati na uređaj koji nema Compliance uključen.
-- Kod Collection replikacije ceo sistem se preslikava, uključujući RL konfiguraciju.
-- Retention Lock **ne zamenjuje replikaciju**. Zaključan fajl na jednom uređaju
-  i dalje nestaje ako uređaj izgori. RL štiti od logičkog brisanja, replikacija
-  od fizičkog gubitka.
+- MTree replikacija **prenosi lock status fajlova** na odredište
+- Odredište mora imati **istu ili kompatibilnu RL licencu i režim**.
+  Compliance MTree se ne može replicirati na uređaj bez Compliance režima
+- Kod Collection replikacije ceo sistem se preslikava, uključujući RL konfiguraciju
+- Retention Lock **ne zamenjuje replikaciju**. RL štiti od logičkog brisanja,
+  replikacija od fizičkog gubitka lokacije
 
 Provera na odredištu:
 
 ```
 mtree list
 mtree retention-lock status mtree /data/col1/<mtree>
+elicense show
 replication show config
 ```
 
-Detalji o replikaciji → **poglavlje 07**.
+Detalji → **poglavlje 07**, CR vault → **poglavlje 12**.
 
 ---
 
-## 6.9 Retention Lock i kapacitet
+## 6.11 Retention Lock i kapacitet
 
-Zaključani podaci se **ne mogu očistiti cleaning-om (GC)** dok im ne istekne rok.
-To je najčešći uzrok situacije "cleaning je odradio, a prostor se nije oslobodio".
+Zaključani podaci se **ne mogu očistiti cleaning-om** dok im ne istekne rok.
+Najčešći uzrok situacije "cleaning je odradio, a prostor se nije oslobodio".
 
 ```
-mtree show compression /data/col1/<mtree>       # koliko MTree stvarno zauzima
+mtree show compression /data/col1/<mtree>
+mtree retention-lock report generate retention-details mtrees all
 filesys show space
 filesys clean status
 ```
 
-Ako je MTree sa RL-om glavni potrošač prostora, jedina opcija je čekanje isteka
-roka ili proširenje kapaciteta. Planirajte kapacitet za **ceo period retencije**,
-ne za trenutno zauzeće. Vidi **poglavlje 04**.
+Planirajte kapacitet za **ceo period retencije**, ne za trenutno zauzeće.
+Vidi **poglavlje 04**.
 
 ---
 
-## 6.10 Checklist pre nego što uključite RL na produkciji
+## 6.12 Checklist pre uključivanja RL na produkciji
 
-- [ ] Potvrđeno da je izabran ispravan režim (Governance vs Compliance) i to zapisano
-- [ ] RL licenca postoji i na izvoru i na svim replikacionim odredištima
-- [ ] `min` i `max` retention period usaglašeni sa politikom retencije backup aplikacije
+- [ ] Potvrđen režim (Governance vs Compliance) i to zapisano
+- [ ] RL licenca postoji na izvoru i na svim replikacionim odredištima (`elicense show`)
+- [ ] `min` i `max` retention usaglašeni sa politikom retencije backup aplikacije
+- [ ] Za Governance: razmotren `system retention-lock governance security-auth enable`
 - [ ] Ako se koristi automatic lock: `automatic-lock-delay` duži od najdužeg backup posla
-- [ ] Za Compliance: security officer nalog kreiran, lozinka pohranjena van DD uređaja
-- [ ] Izračunat kapacitet za pun period retencije, ne za trenutno zauzeće
-- [ ] Testirano na test MTree-ju sa kratkim rokom (npr. 12h) pre produkcije
+- [ ] Za Compliance: nalog sa rolom `security` kreiran, lozinka pohranjena van DD uređaja
+- [ ] Izračunat kapacitet za pun period retencije
+- [ ] Testirano na test MTree-ju sa kratkim rokom (12h) pre produkcije
 - [ ] Dokumentovano ko sme da radi `revert` i po kojoj proceduri
+- [ ] Dokumentovano ko sme da uključi `indefinite-retention-hold` i kako se prati
 
 ---
 
 ## Reference
 
-- DDOS 8.9 Administration Guide, poglavlje o DD Retention Lock
-- DDOS 8.9 Command Reference Guide, sekcije `mtree` i `system retention-lock`
-- <https://www.dell.com/support/kbdoc/en-us/000126375/powerprotect-and-data-domain-core-documents>
+- DD OS 8.6 Command Reference Guide — poglavlja `mtree` (sekcija `retention-lock`), `system`, `authorization`, `user`
+- DD OS 8.6 Administration Guide — DD Retention Lock
