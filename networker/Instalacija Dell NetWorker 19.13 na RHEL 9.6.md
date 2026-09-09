@@ -196,9 +196,13 @@ lgtoxtdclnt-19.13-1.x86_64.rpm
 
 ---
 
-## 4. Instalacija Jave (NRE 17)
+## 4. Instalacija Jave (64-bit Java 17)
 
-NetWorker server traži 64-bit Java 17 — preporučeno NetWorker Runtime Environment (NRE), koji se instalira u `/opt/nre/java/latest`.
+NetWorker server traži 64-bit Java 17. Postoje dve opcije.
+
+### Opcija A — NRE (NetWorker Runtime Environment), preporučeno
+
+> **Važno:** NRE **nije** u `nw19.13_linux_x86_64.tar.gz` arhivi. Preuzima se zasebno sa Dell Online Support portala (stavka "NetWorker Runtime Environment 17.x for Linux"), na istoj download stranici kao NetWorker.
 
 ```bash
 [root@nwsrv nw]# rpm -ivh nre-17.0.3-1.x86_64.rpm
@@ -209,11 +213,40 @@ Updating / installing...
 
 [root@nwsrv nw]# /opt/nre/java/latest/bin/java -version
 java version "17.0.12" 2024-07-16 LTS
-Java(TM) SE Runtime Environment (build 17.0.12+8-LTS-286)
-Java HotSpot(TM) 64-Bit Server VM (build 17.0.12+8-LTS-286, mixed mode, sharing)
 ```
 
-> Ako se koristi Oracle JDK umesto NRE, podrazumevana putanja je `/usr/java/latest` i to treba uneti kada authc skripta pita za Java direktorijum.
+Putanja koja se unosi u `authc_configure.sh`: `/opt/nre/java/latest`
+
+### Opcija B — OpenJDK 17 iz RHEL repozitorijuma
+
+Radi ako nemate NRE. Dovoljno za authentication service.
+
+```bash
+[root@nwsrv ~]# dnf install -y java-17-openjdk java-17-openjdk-devel
+...
+Installed:
+  java-17-openjdk-17.0.14.0.7-2.el9.x86_64
+  java-17-openjdk-devel-17.0.14.0.7-2.el9.x86_64
+Complete!
+```
+
+**Nalaženje tačne putanje** (ovo je čest kamen spoticanja):
+
+```bash
+[root@nwsrv ~]# dirname $(dirname $(readlink -f $(which java)))
+/usr/lib/jvm/java-17-openjdk-17.0.14.0.7-2.el9.x86_64
+```
+
+Tu putanju unosite u `authc_configure.sh` — **bez** `/bin/java` na kraju. Direktorijum mora imati `bin`, `lib`, `conf`:
+
+```bash
+[root@nwsrv ~]# ls /usr/lib/jvm/java-17-openjdk-17.0.14.0.7-2.el9.x86_64
+bin  conf  include  legal  lib  release  tapset
+```
+
+> U `/usr/lib/jvm` postoje i simlinkovi (`java-17`, `jre-17-openjdk` itd.) koji vode na `/etc/alternatives`. Ne koristite njih — unesite pun naziv direktorijuma sa verzijom.
+>
+> Za NMC GUI klijent je ionako potreban OpenWebStart, bez obzira da li koristite NRE ili OpenJDK.
 
 ---
 
@@ -226,8 +259,8 @@ Instaliramo klijent, extended client, storage node, server i authentication serv
   lgtoclnt-19.13-1.x86_64.rpm \
   lgtoxtdclnt-19.13-1.x86_64.rpm \
   lgtonode-19.13-1.x86_64.rpm \
-  lgtoauthc-19.13-1.x86_64.rpm \
   lgtoserv-19.13-1.x86_64.rpm \
+  lgtoauthc-19.13-1.x86_64.rpm \
   lgtoman-19.13-1.x86_64.rpm
 ```
 
@@ -278,6 +311,17 @@ lgtoman-19.13-1.x86_64
 
 > Ako `dnf` prijavi nedostajuće zavisnosti, instalirati ih iz RHEL repozitorijuma i ponoviti komandu. `rpm -ivh` radi isto, ali ne rešava zavisnosti automatski.
 
+**Čest propust:** instalacija paketa jedan po jedan pada, jer paketi zavise jedan od drugog:
+
+```
+[root@nwsrv nw]# dnf localinstall --nogpgcheck lgtoserv-19.13.0.3-1.x86_64.rpm
+Error:
+ Problem: conflicting requests
+  - nothing provides lgtoauthc = 19.13.0.3-1 needed by lgtoserv-19.13.0.3-1.x86_64
+```
+
+Rešenje je da se **svi RPM-ovi navedu u jednoj `dnf` komandi** — `dnf` sam poređa redosled.
+
 ---
 
 ## 6. Konfiguracija Authentication Service
@@ -323,9 +367,6 @@ Skripta kreira OS korisnika `nsrtomcat` (koristi ga samo Tomcat interno) i nalog
 
 ```bash
 [root@nwsrv ~]# systemctl start networker
-[root@nwsrv ~]# systemctl enable networker
-Created symlink /etc/systemd/system/multi-user.target.wants/networker.service → /usr/lib/systemd/system/networker.service.
-
 [root@nwsrv ~]# systemctl status networker
 ● networker.service - NetWorker
    Loaded: loaded (/usr/lib/systemd/system/networker.service; enabled)
@@ -358,6 +399,32 @@ Provera da je `/nsr` popunjen:
 [root@nwsrv ~]# ls /nsr
 authc  cores  db6  debug  index  logs  mm  nmc  res  tmp
 ```
+
+### Autostart posle reboot-a
+
+`networker.service` ima i stari SysV init skript, pa `systemctl enable` poziva `systemd-sysv-install` iz paketa `chkconfig`. Ako `chkconfig` nije instaliran, `enable` tiho ne uspe:
+
+```bash
+[root@nwsrv ~]# systemctl enable networker
+Synchronizing state of networker.service with SysV service script with /usr/lib/systemd/systemd-sysv-install.
+Executing: /usr/lib/systemd/systemd-sysv-install enable networker
+Failed to execute /usr/lib/systemd/systemd-sysv-install: No such file or directory
+
+[root@nwsrv ~]# systemctl is-enabled networker
+disabled
+```
+
+Servis radi, ali **se neće podići posle restarta**. Rešenje — ručni symlink:
+
+```bash
+[root@nwsrv ~]# ln -s /usr/lib/systemd/system/networker.service \
+      /etc/systemd/system/multi-user.target.wants/networker.service
+[root@nwsrv ~]# systemctl daemon-reload
+[root@nwsrv ~]# systemctl is-enabled networker
+enabled
+```
+
+> Alternativa je `dnf install -y chkconfig` pa `systemctl enable networker`, ali symlink radi isto i nema dodatnih zavisnosti.
 
 ---
 
@@ -525,20 +592,195 @@ Connection ports: 0-0
 3. Preuzeti `gconsole.jnlp` i otvoriti ga sa OpenWebStart.
 4. Prijaviti se kao `administrator` sa lozinkom iz koraka 6.
 
-### 10.3 Test backup
+---
+
+## 10a. Kreiranje backup uređaja (AFTD)
+
+**Ovo je korak koji se najčešće preskoči.** Sveže instaliran NetWorker server nema nijedan uređaj — nema gde da upiše podatke. Backup zato pada sa:
+
+```
+206529:save: Unable to set up the direct save with server '...'
+Error: no matching devices for save of client '...'; check storage nodes, devices or pools
+```
+
+a u logu stoji:
+
+```
+nsrsnmd RAP warning No configured devices exist on this storage node.
+```
+
+`mminfo` je prazan (`no matches found for the query`) iz istog razloga — nema nijednog volumena.
+
+### Pojmovnik — šta je šta
+
+| Pojam | Objašnjenje |
+|---|---|
+| **Device (uređaj)** | Mesto gde NetWorker upisuje podatke. Može biti traka, Data Domain (DD Boost) ili disk direktorijum. |
+| **AFTD** | *Advanced File Type Device* — uređaj tipa `adv_file`, tj. običan direktorijum na disku. Najjednostavniji za test i mala okruženja. |
+| **Volume (volumen)** | Logička jedinica medija na uređaju. Na traci = kaseta; na AFTD-u = imenovani skup fajlova u direktorijumu. Uređaj je neupotrebljiv dok se na njemu ne kreira volumen. |
+| **Label (labeliranje)** | Postupak kojim se na uređaju kreira volumen i upisuje mu se ime i pripadnost pool-u. Analogija: formatiranje i lepljenje nalepnice na kasetu. |
+| **Mount (montiranje)** | Stavljanje volumena "u pogon" da bi mogao da prima podatke. Analogija: ubacivanje kasete u drajv. |
+| **Pool** | Logička grupa volumena. Backup se usmerava u pool, a NetWorker bira slobodan volumen iz njega. `Default` pool postoji odmah po instalaciji. |
+| **Save set** | Jedan backup jedne putanje na jednom klijentu (npr. `/tmp/test.txt`). Ima svoj `ssid`. |
+| **nsrsnmd** | Proces koji upravlja uređajima na storage node-u. On javlja upozorenje kad uređaja nema. |
+| **nsrmmd** | Proces koji stvarno upisuje/čita podatke sa medija. |
+
+Redosled je uvek isti: **direktorijum → device → label → mount → backup**.
+
+### 10a.1 Direktorijum za backup
+
+```bash
+[root@nwsrv ~]# mkdir -p /bkp/aftd1
+[root@nwsrv ~]# df -h /bkp
+Filesystem             Size  Used Avail Use% Mounted on
+/dev/mapper/rhel-root   70G   23G   48G  33% /
+```
+
+> Za test je i root particija u redu. **U produkciji AFTD ide na zaseban filesystem** — ne na `/` i nikako u `/nsr` (tamo su indeksi i media baza; ako se napuni, NetWorker staje).
+
+### 10a.2 Kreiranje uređaja
+
+Uređaj se definiše kao resurs tipa `NSR device` u RAP bazi. Najbrže preko `nsradmin` sa ulaznim fajlom:
+
+```bash
+[root@nwsrv ~]# cat > /tmp/dev.txt <<'EOF'
+create type: NSR device;
+name: /bkp/aftd1;
+media type: adv_file;
+device access information: /bkp/aftd1;
+EOF
+
+[root@nwsrv ~]# nsradmin -i /tmp/dev.txt
+created resource id 174.0.49.150.0.0.0.0.89.187.161.106.10.99.3.14(1)
+```
+
+Značenje atributa:
+
+- `type: NSR device` — tip resursa koji se kreira.
+- `name` — ime uređaja kako se vidi u NMC-u; kod AFTD-a je to putanja.
+- `media type: adv_file` — tip medija (AFTD). Za Data Domain bi bilo `Data Domain`.
+- `device access information` — fizička putanja gde se upisuju podaci.
+
+Provera da je uređaj kreiran:
+
+```bash
+[root@nwsrv ~]# nsradmin -p nsrd
+NetWorker administration program.
+Use the "help" command for help, "visual" for full-screen mode.
+nsradmin> print type: NSR device
+                        type: NSR device;
+                        name: /bkp/aftd1;
+                  media type: adv_file;
+   device access information: /bkp/aftd1;
+                     enabled: Yes;
+nsradmin> quit
+```
+
+> Unutar `nsradmin` prompta kucate **samo** `print type: NSR device`, bez ponovnog kucanja reči `nsradmin>`. Ako je nalepite iz uputstva zajedno sa promptom, dobićete `unknown command: nsradmin>`.
+
+### 10a.3 Labeliranje volumena
+
+```bash
+[root@nwsrv ~]# nsrmm -l -b Default -f /bkp/aftd1 -y
+Using volume name `nwsrv.firma.local.001' for pool `Default'
+```
+
+Opcije:
+
+- `-l` — label (kreiraj volumen).
+- `-b Default` — pool u koji volumen pripada.
+- `-f /bkp/aftd1` — uređaj na kome se labelira.
+- `-y` — potvrdi bez pitanja (labeliranje briše postojeći sadržaj volumena).
+
+Ime volumena NetWorker generiše sam (`hostname.001`).
+
+### 10a.4 Montiranje volumena
+
+```bash
+[root@nwsrv ~]# nsrmm -m -f /bkp/aftd1
+adv_file disk nwsrv.firma.local.001 mounted on /bkp/aftd1, write enabled
+```
+
+`write enabled` = volumen prima podatke.
+
+Provera:
+
+```bash
+[root@nwsrv ~]# mminfo -m
+ state volume                written  (%)  expires   read mounts capacity
+       nwsrv.firma.local.001    0 KB   0%  undef     0 KB      1     0 KB
+```
+
+Volumen postoji, prazan je (0 KB), montiran jednom.
+
+---
+
+## 10b. Test backup i restore
+
+### 10b.1 Backup
 
 ```bash
 [root@nwsrv ~]# echo "test" > /tmp/test.txt
 [root@nwsrv ~]# save -s nwsrv.firma.local /tmp/test.txt
-save: /tmp/test.txt  4 B 00:00:01     1 file(s)
-completed savetime=1757404912
+181407:save: Step (1 of 7) for PID-40976: Save has been started on the client 'nwsrv.firma.local'.
+175313:save: Step (2 of 7): Running the backup on the client for the selected save sets.
+174920:save: Step (3 of 6): Contacting the NetWorker server through the nsrd process to obtain
+              a handle to the target media device through the nsrmmd process.
+174908:save: Saving the backup data in the pool 'Default'.
+129292:save: Successfully established Client direct save session for save-set ID '4288790569'
+              (nwsrv.firma.local:/tmp/test.txt) with adv_file volume 'nwsrv.firma.local.001'.
+174422:save: Step (5 of 6): Reading the save sets and writing to the target device.
+/tmp/test.txt
+174917:save: Step (6 of 6): Backup has succeeded. Save is exiting.
+
+save: /tmp/test.txt  2 KB 00:00:00      3 files
+94694:save: The backup of save set '/tmp/test.txt' succeeded.
 ```
 
+Ključne poruke koje potvrđuju uspeh: `Successfully established Client direct save session`, `Backup has succeeded`, `succeeded`.
+
+> "3 files" umesto 1 je normalno — NetWorker uz fajl snima i putanje `/tmp/` i `/`.
+
+### 10b.2 Provera u media bazi
+
 ```bash
-[root@nwsrv ~]# mminfo -s nwsrv.firma.local
- volume        client       date      size   level  name
- Default.001   nwsrv        09/09/26   4 KB   full   /tmp/test.txt
+[root@nwsrv ~]# mminfo
+ volume                 client              date        size   level  name
+ nwsrv.firma.local.001  nwsrv.firma.local   09/09/2026  2 KB   manual /tmp/test.txt
 ```
+
+Korisne varijante:
+
+```bash
+[root@nwsrv ~]# mminfo -m                      # stanje volumena
+[root@nwsrv ~]# mminfo -avot                   # svi save set-ovi, hronološki
+[root@nwsrv ~]# mminfo -q "client=nwsrv.firma.local"
+```
+
+### 10b.3 Test restore
+
+```bash
+[root@nwsrv ~]# mkdir /tmp/restore
+[root@nwsrv ~]# recover -s nwsrv.firma.local -d /tmp/restore -a /tmp/test.txt
+Recovering 1 file into /tmp/restore
+Received 1 file(s) from NSR server `nwsrv.firma.local'
+Recover completion time: Wed Sep  9 22:30:11 2026
+
+[root@nwsrv ~]# cat /tmp/restore/tmp/test.txt
+test
+```
+
+Backup i restore rade — instalacija je funkcionalno potvrđena.
+
+### 10b.4 Isto kroz NMC (preporučeno za produkciju)
+
+Za realne uređaje koristite čarobnjak umesto CLI-ja:
+
+**NetWorker Administration → Devices → desni klik na Devices → New Device Wizard**
+
+Čarobnjak u jednom prolazu kreira uređaj, labelira volumen i montira ga, uz validaciju svakog koraka.
+
+> **Napomena za produkciju:** AFTD na lokalnom disku je za test i mala okruženja. Realno se koristi Data Domain — tada se uređaj kreira kao **DD Boost** uređaj (media type `Data Domain`), sa DD hostom, storage unit-om i DD Boost korisnikom, ne kao `adv_file`.
 
 ---
 
@@ -614,6 +856,12 @@ Capacity: 100 TB   Expiration: No expiration date
 | `gstd` ne startuje, greška `Unable to get authentication service host name` | Ponovo pokrenuti `/opt/lgtonmc/bin/nmc_config` |
 | `ERROR: User nsrtomcat does not have read permission at path /nsr/authc/conf` | Dodeliti korisniku `nsrtomcat` prava čitanja na `/nsr/authc/conf` |
 | `Could not authenticate this username and password` | Pogrešna lozinka za `administrator`, ili očistiti Java keš na klijentu |
+| `nothing provides lgtoauthc ... needed by lgtoserv` | Paketi se instaliraju pojedinačno — navesti sve RPM-ove u jednoj `dnf` komandi |
+| `ERROR: The specified directory does not exist` (authc skripta) | Pogrešna Java putanja — koristiti `dirname $(dirname $(readlink -f $(which java)))`, bez `/bin/java` |
+| `systemctl enable networker` → `Failed to execute /usr/lib/systemd/systemd-sysv-install` | Nedostaje `chkconfig` — napraviti symlink ručno (korak 7) |
+| `no matching devices for save of client` | Nije kreiran nijedan uređaj — poglavlje 10a |
+| `mminfo: no matches found for the query` | Nema volumena (uređaj nije labeliran) ili još nema nijednog backup-a |
+| `unknown command: nsradmin>` | Prompt `nsradmin>` je nalepljen zajedno sa komandom — kucati samo komandu |
 
 ---
 
@@ -651,12 +899,15 @@ Ako se ne planira reinstalacija, obrisati i `/nsr`:
 - [ ] NRE 17 / JDK 17 instaliran
 - [ ] RPM-ovi instalirani ispravnim redosledom
 - [ ] `authc_configure.sh` odrađen, `administrator` lozinka zabeležena u trezoru
-- [ ] `systemctl enable networker` i `gst`
+- [ ] `systemctl is-enabled networker` vraća `enabled` (ne samo `start`!)
+- [ ] `systemctl is-enabled gst` vraća `enabled`
 - [ ] NMC dostupan na 9000, NWUI na 9090/nwui
 - [ ] Firewall portovi otvoreni
 - [ ] SELinux vraćen u `Enforcing`
 - [ ] Licenca validirana (`nsrlic -C`)
+- [ ] Kreiran i montiran bar jedan uređaj (`mminfo -m` nije prazan)
 - [ ] Test backup i restore uspešni
+- [ ] Reboot test — posle restarta `systemctl status networker` je `active (running)`
 
 ---
 
