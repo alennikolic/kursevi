@@ -226,8 +226,8 @@ Instaliramo klijent, extended client, storage node, server i authentication serv
   lgtoclnt-19.13-1.x86_64.rpm \
   lgtoxtdclnt-19.13-1.x86_64.rpm \
   lgtonode-19.13-1.x86_64.rpm \
-  lgtoserv-19.13-1.x86_64.rpm \
   lgtoauthc-19.13-1.x86_64.rpm \
+  lgtoserv-19.13-1.x86_64.rpm \
   lgtoman-19.13-1.x86_64.rpm
 ```
 
