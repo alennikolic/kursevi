@@ -49,7 +49,7 @@ MPIO Disk0   Disk 1       RRWS         Microsoft DSM
 MPIO Disk1   Disk 2       RRWS         Microsoft DSM
 ```
 
-Ako piše `No MPIO disks are present.`, vidi poglavlje *Rešavanje problema*.
+Ako piše `No MPIO disks are present.`, najčešći uzrok je da server nije restartovan posle koraka 2.
 
 ### 3.2 Da li su duplikati nestali
 
@@ -93,51 +93,14 @@ MPIO Disk0: 02 Paths, Round Robin with Subset, Implicit and Explicit
 
 ## 4. Politika balansiranja
 
-MSDSM sam prepozna ALUA array i postavi **Round Robin with Subset**, pa u većini slučajeva nema šta da se menja. Ako treba forsirati:
+**U najvećem broju slučajeva ovde nema šta da se radi.** MSDSM sam prepozna da je Unity ALUA array i svakom disku dodeli **Round Robin with Subset**. Ako ti je u koraku 3.1 u koloni *LB Policy* već `RRWS` na svim diskovima, preskoči ovo poglavlje.
+
+Intervencija je potrebna samo ako na nekom disku zatekneš drugu politiku — najčešće `FOO` (Fail Over Only), što znači da se koristi samo jedna putanja:
 
 ```powershell
 mpclaim -l -d 0 3    # 3 = Round Robin with Subset
 ```
 
-`Set-MSDSMGlobalDefaultLoadBalancePolicy` prihvata samo `FOO`, `RR`, `LQD` i `None` — RRWS se postavlja po disku, kao gore.
+Broj iza `-d` je MPIO disk broj, `3` je oznaka politike. Postavlja se po disku, pa komandu treba ponoviti za svaki disk kojem politika nije ispravna.
 
-## Rešavanje problema
-
-### `No MPIO disks are present.`
-
-Najčešći uzrok je da server nije restartovan posle koraka 2.
-
-Ako jeste restartovan, problem je verovatno u hardverskom ID-u. MPIO ga poredi kao fiksni string od 24 znaka: 8 za vendora, 16 za proizvod, dopunjeno razmacima. Proveri šta sistem stvarno vidi na magistrali i uporedi sa registrovanim unosom:
-
-```powershell
-Get-MPIOAvailableHW
-Get-MSDSMSupportedHW
-```
-
-### Dodavanje uređaja kroz GUI
-
-Alternativa koja ne zavisi od ručnog kucanja ID-a, jer čita string direktno sa uređaja:
-
-```powershell
-Remove-MSDSMSupportedHW -VendorId "DGC" -ProductId "VRAID"
-mpiocpl
-```
-
-U tabu **Discover Multi-Paths**, pod sekcijom *Others*, izabrati Unity uređaj → **Add** → restart.
-
-Uređaj se u toj listi pojavljuje samo ako nije već registrovan i ako Windows u tom trenutku vidi više putanja ka njemu. Ako je lista prazna, proveri zoniranje i mapiranje LUN-ova preko oba SP-a.
-
-### Sadržaj taba MPIO Devices
-
-Posle uspešne registracije, u `mpiocpl` → tab **MPIO Devices** stoje dva unosa:
-
-```
-DGC     VRAID
-Vendor 8Product    16
-```
-
-Drugi red nije uređaj — to je podrazumevani primer koji Windows isporučuje i pokazuje format stringa (8 + 16 znakova). Ne dirati ga.
-
-## Dalji koraci
-
-Tek kada je MPIO potvrđen na svim hostovima, pristupa se inicijalizaciji diskova — i to **samo sa jednog hosta**, dok na ostalima diskovi ostaju offline.
+`Set-MSDSMGlobalDefaultLoadBalancePolicy` za ovo ne pomaže — prihvata samo `FOO`, `RR`, `LQD` i `None`, a RRWS nije u tom skupu.
