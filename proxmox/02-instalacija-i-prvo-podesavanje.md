@@ -377,7 +377,28 @@ chronyc tracking
 
 ---
 
-## 2.9 Česti problemi pri instalaciji
+## 2.9 U produkciji: šta raditi drugačije
+
+Instalacija u laboratoriji i u produkciji izgleda isto, ali se odluke razlikuju:
+
+| Tema | Laboratorija | Produkcija |
+|---|---|---|
+| Hardver | Bilo koji računar | Serverski hardver sa ECC RAM-om, redundantnim napajanjem i daljinskim upravljanjem (IPMI/iDRAC/iLO) |
+| Sistemski disk | Jedan disk | **Dva diska u ogledalu** (ZFS RAID1 ili hardverski RAID1), po mogućstvu odvojeni od diskova za goste |
+| Diskovi za goste | Isti disk kao sistem | Posebni SSD/NVMe diskovi enterprise klase (sa zaštitom od nestanka struje, *PLP*) |
+| Mreža | Jedna kartica | **Bond** od dve kartice za upravljanje (od 9.3 već u instaleru), posebne mreže za goste, klaster i storage |
+| Repozitorijum | No-Subscription | **Enterprise** (uz pretplatu) |
+| Imena i adrese | Bilo koja | Ime iz pravog DNS domena firme, adrese po planu adresiranja, upisane u DNS |
+| Instalacija više servera | Ručno | **Automatska instalacija** sa fajlom odgovora (`proxmox-auto-install-assistant`), da svi čvorovi budu identični |
+| Firmware | Kako je | Ažuriraj BIOS/UEFI, firmware diskova i mrežnih kartica **pre** instalacije |
+
+> **Važno za ZFS u produkciji:** ZFS ne sme da radi preko hardverskog RAID kontrolera. Kontroler mora da bude u **HBA/IT režimu**, da ZFS direktno vidi diskove.
+
+> **Savet:** Pre puštanja u rad, ostavi novi server da radi nekoliko dana pod opterećenjem (test memorije, test diskova). Tako kvarove otkriješ pre nego što na njega staviš produkcione goste.
+
+---
+
+## 2.10 Česti problemi pri instalaciji
 
 | Problem | Moguće rešenje |
 |---|---|
@@ -390,7 +411,7 @@ chronyc tracking
 
 ---
 
-## 2.10 Vežba
+## 2.11 Vežba
 
 1. Instaliraj Proxmox VE 9.3 na fizički računar ili u VM.
 2. Prijavi se na web interfejs.
@@ -402,7 +423,7 @@ chronyc tracking
 
 ---
 
-## 2.11 Rezime
+## 2.12 Rezime
 
 - Proxmox VE se instalira sa ISO-a napravljenog kao butabilni USB (DD režim) ili u VM-u sa ugnježdenom virtuelizacijom.
 - Najvažniji podaci za instalaciju su **FQDN, statička IP adresa, gateway i DNS**.
@@ -413,7 +434,7 @@ chronyc tracking
 
 ---
 
-## 2.12 Pitanja za proveru znanja
+## 2.13 Pitanja za proveru znanja
 
 1. Kako proveravaš da li procesor podržava hardversku virtuelizaciju?
 2. Zašto Rufus treba da koristi DD režim pri pravljenju USB-a?
